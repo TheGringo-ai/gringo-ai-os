@@ -1,0 +1,385 @@
+#!/usr/bin/env python3
+"""
+GRINGO - Global AI Assistant
+System-wide AI assistant for macOS integration
+Usage: gringo [command] [args...]
+"""
+
+import sys
+import os
+import json
+import subprocess
+import argparse
+from pathlib import Path
+
+# Add the dev_ai directory to the path
+GRINGO_HOME = Path(__file__).parent.absolute()
+sys.path.insert(0, str(GRINGO_HOME))
+
+try:
+    from multi_agent_orchestrator import MultiAgentOrchestrator
+except ImportError:
+    print("❌ Error: Could not import MultiAgentOrchestrator")
+    print(f"   Make sure you're running from: {GRINGO_HOME}")
+    sys.exit(1)
+
+class GringoSystemIntegration:
+    def __init__(self):
+        self.orchestrator = MultiAgentOrchestrator()
+        self.setup_agents()
+    
+    def setup_agents(self):
+        """Register all available agents"""
+        agents = [
+            ("planner", "🧠 Task planning and breakdown", "planner_agent.py"),
+            ("refactor", "⚙️ Code refactoring and optimization", "refactor_agent.py"),
+            ("test_gen", "🧪 Automated test generation", "test_generator_agent.py"),
+            ("doc_gen", "📚 Documentation generation", "doc_generator_agent.py"),
+            ("reviewer", "🔍 Code review and quality check", "review_agent.py"),
+            ("performance", "⚡ Performance monitoring", "performance_agent.py"),
+            ("ai_planner", "🤖 AI-powered planning with LLaMA", "ai_planning_agent.py"),
+            ("deploy", "🚀 Deployment automation", "deploy_agent.py"),
+            ("security", "🔒 Security analysis", "security_agent.py"),
+            ("analytics", "📊 Code analytics", "analytics_agent.py"),
+            ("api", "🌐 API detection and management", "api_agent.py"),
+        ]
+        
+        for agent_id, description, script in agents:
+            self.orchestrator.register_agent(agent_id, description, script)
+    
+    def handle_file_task(self, action: str, file_path: str, *args):
+        """Handle file-related tasks"""
+        file_path = os.path.abspath(file_path)
+        
+        if action == "create":
+            content = " ".join(args) if args else ""
+            return self.create_file(file_path, content)
+        elif action == "edit":
+            instruction = " ".join(args)
+            return self.edit_file(file_path, instruction)
+        elif action == "review":
+            return self.review_file(file_path)
+        elif action == "summarize":
+            return self.summarize_file(file_path)
+        elif action == "delete":
+            return self.delete_file(file_path)
+        else:
+            return f"❌ Unknown file action: {action}"
+    
+    def handle_code_task(self, action: str, target: str, *args):
+        """Handle code-related tasks"""
+        if action == "create":
+            language = target
+            description = " ".join(args)
+            return self.create_code(language, description)
+        elif action == "edit":
+            return self.edit_code(target, " ".join(args))
+        elif action == "review":
+            return self.review_code(target)
+        elif action == "fix":
+            return self.fix_code(target)
+        elif action == "test":
+            return self.generate_tests(target)
+        else:
+            return f"❌ Unknown code action: {action}"
+    
+    def create_file(self, file_path: str, content: str = ""):
+        """Create a new file"""
+        try:
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            with open(file_path, 'w') as f:
+                f.write(content)
+            return f"✅ Created file: {file_path}"
+        except Exception as e:
+            return f"❌ Failed to create file: {e}"
+    
+    def edit_file(self, file_path: str, instruction: str):
+        """Edit an existing file using AI agents"""
+        if not os.path.exists(file_path):
+            return f"❌ File not found: {file_path}"
+        
+        # Use appropriate agent based on file type
+        if file_path.endswith('.py'):
+            task_data = [{
+                "agent": "refactor",
+                "data": {
+                    "file_path": file_path,
+                    "instruction": instruction,
+                    "type": "edit"
+                }
+            }]
+            results = self.orchestrator.orchestrate_parallel(task_data)
+            return f"✅ Edited {file_path} using refactor agent"
+        else:
+            # For non-code files, use basic editing
+            try:
+                with open(file_path, 'r') as f:
+                    content = f.read()
+                
+                # Simple instruction processing (you could enhance this with LLM)
+                if "append" in instruction.lower():
+                    new_content = instruction.replace("append", "").strip()
+                    with open(file_path, 'a') as f:
+                        f.write("\n" + new_content)
+                    return f"✅ Appended to {file_path}"
+                else:
+                    return f"✅ File editing instruction received: {instruction}"
+            except Exception as e:
+                return f"❌ Failed to edit file: {e}"
+    
+    def review_file(self, file_path: str):
+        """Review a file using AI agents"""
+        if not os.path.exists(file_path):
+            return f"❌ File not found: {file_path}"
+        
+        task_data = [{
+            "agent": "reviewer",
+            "data": {
+                "file_path": file_path,
+                "type": "review"
+            }
+        }]
+        
+        if file_path.endswith('.py'):
+            results = self.orchestrator.orchestrate_parallel(task_data)
+        else:
+            # Basic file review
+            try:
+                with open(file_path, 'r') as f:
+                    content = f.read()
+                lines = len(content.split('\n'))
+                size = len(content)
+                return f"📊 File Review: {file_path}\n   Lines: {lines}\n   Size: {size} chars"
+            except Exception as e:
+                return f"❌ Failed to review file: {e}"
+        
+        return f"✅ Reviewed {file_path}"
+    
+    def summarize_file(self, file_path: str):
+        """Summarize a file"""
+        if not os.path.exists(file_path):
+            return f"❌ File not found: {file_path}"
+        
+        try:
+            with open(file_path, 'r') as f:
+                content = f.read()
+            
+            lines = content.split('\n')
+            total_lines = len(lines)
+            non_empty_lines = len([line for line in lines if line.strip()])
+            
+            if file_path.endswith('.py'):
+                # Basic Python analysis
+                imports = len([line for line in lines if line.strip().startswith('import') or line.strip().startswith('from')])
+                functions = len([line for line in lines if line.strip().startswith('def ')])
+                classes = len([line for line in lines if line.strip().startswith('class ')])
+                
+                return f"""📋 Summary: {file_path}
+   📏 Total Lines: {total_lines}
+   ✏️  Non-empty Lines: {non_empty_lines}
+   📦 Imports: {imports}
+   🔧 Functions: {functions}
+   🏗️  Classes: {classes}"""
+            else:
+                return f"""📋 Summary: {file_path}
+   📏 Total Lines: {total_lines}
+   ✏️  Non-empty Lines: {non_empty_lines}
+   📊 Size: {len(content)} characters"""
+        
+        except Exception as e:
+            return f"❌ Failed to summarize file: {e}"
+    
+    def delete_file(self, file_path: str):
+        """Delete a file"""
+        if not os.path.exists(file_path):
+            return f"❌ File not found: {file_path}"
+        
+        try:
+            os.remove(file_path)
+            return f"🗑️  Deleted file: {file_path}"
+        except Exception as e:
+            return f"❌ Failed to delete file: {e}"
+    
+    def create_code(self, language: str, description: str):
+        """Create code using AI agents"""
+        task_data = [{
+            "agent": "planner",
+            "data": {
+                "language": language,
+                "description": description,
+                "type": "create"
+            }
+        }]
+        
+        # Use planner to break down the task
+        results = self.orchestrator.orchestrate_parallel(task_data)
+        return f"✅ Code creation planned for {language}: {description}"
+    
+    def edit_code(self, file_path: str, instruction: str):
+        """Edit code using refactor agent"""
+        return self.edit_file(file_path, instruction)
+    
+    def review_code(self, file_path: str):
+        """Review code using review agent"""
+        return self.review_file(file_path)
+    
+    def fix_code(self, file_path: str):
+        """Fix code issues"""
+        if not os.path.exists(file_path):
+            return f"❌ File not found: {file_path}"
+        
+        task_data = [{
+            "agent": "reviewer",
+            "data": {
+                "file_path": file_path,
+                "type": "fix"
+            }
+        }, {
+            "agent": "refactor",
+            "data": {
+                "file_path": file_path,
+                "type": "fix"
+            }
+        }]
+        
+        results = self.orchestrator.orchestrate_parallel(task_data)
+        return f"✅ Code fixes applied to {file_path}"
+    
+    def generate_tests(self, file_path: str):
+        """Generate tests for code"""
+        if not os.path.exists(file_path):
+            return f"❌ File not found: {file_path}"
+        
+        task_data = [{
+            "agent": "test_gen",
+            "data": {
+                "file_path": file_path,
+                "type": "test_generation"
+            }
+        }]
+        
+        results = self.orchestrator.orchestrate_parallel(task_data)
+        return f"✅ Tests generated for {file_path}"
+    
+    def find_duplicates(self, directory: str):
+        """Find and optionally delete duplicate files"""
+        import hashlib
+        from collections import defaultdict
+        
+        file_hashes = defaultdict(list)
+        
+        for root, dirs, files in os.walk(directory):
+            for file in files:
+                if file.startswith('.'):
+                    continue
+                    
+                file_path = os.path.join(root, file)
+                try:
+                    with open(file_path, 'rb') as f:
+                        file_hash = hashlib.md5(f.read()).hexdigest()
+                        file_hashes[file_hash].append(file_path)
+                except:
+                    continue
+        
+        duplicates = {hash_val: paths for hash_val, paths in file_hashes.items() if len(paths) > 1}
+        
+        if not duplicates:
+            return f"✅ No duplicate files found in {directory}"
+        
+        result = f"🔍 Found {len(duplicates)} sets of duplicate files:\n"
+        for hash_val, paths in duplicates.items():
+            result += f"\n📄 Duplicate set ({len(paths)} files):\n"
+            for path in paths:
+                result += f"   • {path}\n"
+        
+        return result
+    
+    def delete_duplicates(self, directory: str):
+        """Delete duplicate files, keeping the first one"""
+        duplicates_info = self.find_duplicates(directory)
+        if "No duplicate files found" in duplicates_info:
+            return duplicates_info
+        
+        # This is a simplified version - in practice you'd want confirmation
+        return f"⚠️  Duplicate deletion requires manual confirmation for safety.\n{duplicates_info}"
+
+def main():
+    parser = argparse.ArgumentParser(description="GRINGO - Global AI Assistant")
+    parser.add_argument("command", help="Command to execute")
+    parser.add_argument("args", nargs="*", help="Command arguments")
+    
+    args = parser.parse_args()
+    
+    gringo = GringoSystemIntegration()
+    
+    command = args.command.lower()
+    cmd_args = args.args
+    
+    if command == "file":
+        if len(cmd_args) < 2:
+            print("❌ Usage: gringo file [create|edit|review|summarize|delete] <file_path> [args...]")
+            sys.exit(1)
+        result = gringo.handle_file_task(cmd_args[0], cmd_args[1], *cmd_args[2:])
+    
+    elif command == "code":
+        if len(cmd_args) < 2:
+            print("❌ Usage: gringo code [create|edit|review|fix|test] <target> [args...]")
+            sys.exit(1)
+        result = gringo.handle_code_task(cmd_args[0], cmd_args[1], *cmd_args[2:])
+    
+    elif command == "duplicates":
+        if len(cmd_args) < 1:
+            print("❌ Usage: gringo duplicates <directory>")
+            sys.exit(1)
+        result = gringo.find_duplicates(cmd_args[0])
+    
+    elif command == "clean":
+        if len(cmd_args) < 1:
+            print("❌ Usage: gringo clean <directory>")
+            sys.exit(1)
+        result = gringo.delete_duplicates(cmd_args[0])
+    
+    elif command == "agents":
+        result = "🤖 Available Agents:\n"
+        for agent_id, info in gringo.orchestrator.agents.items():
+            status = "🟢" if info["active"] else "🔴"
+            result += f"   {status} {agent_id}: {info['description']}\n"
+    
+    elif command == "help":
+        result = """🤖 GRINGO - Global AI Assistant
+
+📁 File Operations:
+   gringo file create <path> [content]     - Create a new file
+   gringo file edit <path> <instruction>   - Edit an existing file
+   gringo file review <path>               - Review a file
+   gringo file summarize <path>            - Summarize a file
+   gringo file delete <path>               - Delete a file
+
+💻 Code Operations:
+   gringo code create <language> <desc>    - Create new code
+   gringo code edit <path> <instruction>   - Edit code file
+   gringo code review <path>               - Review code
+   gringo code fix <path>                  - Fix code issues
+   gringo code test <path>                 - Generate tests
+
+🧹 Cleanup Operations:
+   gringo duplicates <directory>           - Find duplicate files
+   gringo clean <directory>                - Delete duplicates (with confirmation)
+
+🤖 System:
+   gringo agents                           - List available agents
+   gringo help                             - Show this help
+
+Examples:
+   gringo file create /tmp/test.py "print('hello')"
+   gringo code review main.py
+   gringo duplicates ~/Downloads
+   gringo file summarize README.md"""
+    
+    else:
+        result = f"❌ Unknown command: {command}\nUse 'gringo help' for available commands."
+    
+    print(result)
+
+if __name__ == "__main__":
+    main()

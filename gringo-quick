@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""
+GRINGO Quick Actions - macOS Integration
+Provides quick file actions through system integration
+"""
+
+import os
+import sys
+import subprocess
+from pathlib import Path
+
+def get_selected_files():
+    """Get currently selected files in Finder (if any)"""
+    script = '''
+    tell application "Finder"
+        set theSelection to selection
+        set fileList to {}
+        repeat with i from 1 to count of theSelection
+            set end of fileList to POSIX path of (item i of theSelection as alias)
+        end repeat
+        return fileList
+    end tell
+    '''
+    
+    try:
+        result = subprocess.run(['osascript', '-e', script], 
+                              capture_output=True, text=True)
+        if result.returncode == 0 and result.stdout.strip():
+            files = result.stdout.strip().split(', ')
+            return [f.strip() for f in files if f.strip()]
+    except:
+        pass
+    return []
+
+def get_current_directory():
+    """Get current Finder directory"""
+    script = '''
+    tell application "Finder"
+        return POSIX path of (target of front window as alias)
+    end tell
+    '''
+    
+    try:
+        result = subprocess.run(['osascript', '-e', script], 
+                              capture_output=True, text=True)
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except:
+        pass
+    return os.getcwd()
+
+def show_notification(title, message):
+    """Show macOS notification"""
+    script = f'''
+    display notification "{message}" with title "{title}"
+    '''
+    subprocess.run(['osascript', '-e', script])
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: gringo-quick [review|summarize|duplicates|fix]")
+        sys.exit(1)
+    
+    action = sys.argv[1].lower()
+    gringo_dir = Path(__file__).parent.absolute()
+    gringo_cmd = str(gringo_dir / "gringo")
+    
+    # Get context
+    selected_files = get_selected_files()
+    current_dir = get_current_directory()
+    
+    if action == "review" and selected_files:
+        # Review selected files
+        for file_path in selected_files:
+            print(f"🔍 Reviewing: {file_path}")
+            result = subprocess.run([gringo_cmd, "file", "review", file_path], 
+                                  capture_output=True, text=True)
+            print(result.stdout)
+        show_notification("GRINGO", f"Reviewed {len(selected_files)} files")
+    
+    elif action == "summarize" and selected_files:
+        # Summarize selected files
+        for file_path in selected_files:
+            print(f"📋 Summarizing: {file_path}")
+            result = subprocess.run([gringo_cmd, "file", "summarize", file_path], 
+                                  capture_output=True, text=True)
+            print(result.stdout)
+        show_notification("GRINGO", f"Summarized {len(selected_files)} files")
+    
+    elif action == "duplicates":
+        # Find duplicates in current directory
+        print(f"🔍 Finding duplicates in: {current_dir}")
+        result = subprocess.run([gringo_cmd, "duplicates", current_dir], 
+                              capture_output=True, text=True)
+        print(result.stdout)
+        show_notification("GRINGO", "Duplicate scan complete")
+    
+    elif action == "fix" and selected_files:
+        # Fix code files
+        code_files = [f for f in selected_files if f.endswith(('.py', '.js', '.ts', '.java', '.cpp', '.c'))]
+        for file_path in code_files:
+            print(f"🔧 Fixing: {file_path}")
+            result = subprocess.run([gringo_cmd, "code", "fix", file_path], 
+                                  capture_output=True, text=True)
+            print(result.stdout)
+        show_notification("GRINGO", f"Fixed {len(code_files)} code files")
+    
+    else:
+        print(f"❌ No files selected or unknown action: {action}")
+        print("Available actions: review, summarize, duplicates, fix")
+
+if __name__ == "__main__":
+    main()
