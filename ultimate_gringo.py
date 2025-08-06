@@ -20,11 +20,68 @@ from multi_agent_orchestrator import MultiAgentOrchestrator, AgentResult
 
 # Set page config first
 st.set_page_config(
-    page_title="🤖 GRINGO Ultimate Dashboard",
-    page_icon="🤖",
+    page_title="🤖 GRINGO AI OS - Ultimate Development Environment",
+    page_icon="⚙️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Custom CSS for GRINGO branding
+st.markdown("""
+<style>
+    .gringo-header {
+        background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%);
+        padding: 1rem;
+        border-radius: 10px;
+        margin-bottom: 2rem;
+        border: 2px solid #06b6d4;
+        box-shadow: 0 0 20px rgba(6, 182, 212, 0.3);
+    }
+    .gringo-logo {
+        font-size: 3rem;
+        font-weight: bold;
+        background: linear-gradient(45deg, #06b6d4, #3b82f6, #8b5cf6);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        text-align: center;
+        margin-bottom: 0.5rem;
+        text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+    }
+    .gringo-tagline {
+        color: #06b6d4;
+        text-align: center;
+        font-size: 1.2rem;
+        font-weight: 500;
+        margin-bottom: 1rem;
+    }
+    .gringo-subtitle {
+        color: #e2e8f0;
+        text-align: center;
+        font-size: 1rem;
+        opacity: 0.9;
+    }
+    .feature-card {
+        background: rgba(6, 182, 212, 0.1);
+        border: 1px solid #06b6d4;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 0.5rem 0;
+    }
+    .stButton > button {
+        background: linear-gradient(45deg, #06b6d4, #3b82f6);
+        border: none;
+        border-radius: 8px;
+        color: white;
+        font-weight: bold;
+        transition: all 0.3s ease;
+    }
+    .stButton > button:hover {
+        box-shadow: 0 0 15px rgba(6, 182, 212, 0.5);
+        transform: translateY(-2px);
+    }
+</style>
+""", unsafe_allow_html=True)
 
 class FullProjectManager:
     def __init__(self, workspace_root: str):
@@ -1817,9 +1874,27 @@ def analyze_workspace(workspace_root):
 def main():
     """Main application"""
     
+    # GRINGO Branded Header
+    st.markdown("""
+    <div class="gringo-header">
+        <div class="gringo-logo">⚙️ GRINGO AI OS</div>
+        <div class="gringo-tagline">Ultimate AI-Powered Development Environment</div>
+        <div class="gringo-subtitle">Transform ideas into working code • Privacy-first local AI • Multi-agent orchestration</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
     # Sidebar
-    st.sidebar.title("🤖 GRINGO Ultimate OS")
-    st.sidebar.markdown("**Complete Development Dashboard**")
+    st.sidebar.title("🤖 GRINGO Navigation")
+    st.sidebar.markdown("**Complete AI Development Suite**")
+    
+    # Clean sidebar without large logo
+    st.sidebar.markdown("""
+    <div style="text-align: center; margin: 1rem 0;">
+        <div style="font-size: 2rem;">⚙️</div>
+        <div style="color: #06b6d4; font-weight: bold;">GRINGO AI OS</div>
+        <div style="color: #94a3b8; font-size: 0.9rem;">Ultimate Development Suite</div>
+    </div>
+    """, unsafe_allow_html=True)
     
     # Navigation
     page = st.sidebar.radio(
