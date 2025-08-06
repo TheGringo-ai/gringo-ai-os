@@ -148,6 +148,191 @@ class FullProjectManager:
             features.append('file_handling')
         return features
     
+    def learn_from_files(self, uploaded_files, learn_prompt: str, project_name: str = None) -> dict:
+        """Learn from uploaded files to create similar projects"""
+        if not project_name:
+            project_name = f"learned_project_{datetime.now().strftime('%m%d_%H%M')}"
+        
+        project_path = os.path.join(self.projects_dir, project_name)
+        os.makedirs(project_path, exist_ok=True)
+        
+        # Save uploaded files
+        file_info = []
+        for uploaded_file in uploaded_files:
+            file_path = os.path.join(project_path, uploaded_file.name)
+            with open(file_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            file_info.append({
+                'name': uploaded_file.name,
+                'size': len(uploaded_file.getbuffer()),
+                'type': uploaded_file.type
+            })
+        
+        # Analyze files with AI (if available)
+        analysis = self._analyze_uploaded_files(project_path, learn_prompt)
+        
+        # Store learning data
+        learning_data = {
+            'project_name': project_name,
+            'files': file_info,
+            'analysis': analysis,
+            'learn_prompt': learn_prompt,
+            'created_at': datetime.now().isoformat()
+        }
+        
+        # Save to database
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO projects (name, path, type, status, created_at, metadata)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (project_name, project_path, 'learning', 'analyzed', 
+              datetime.now().isoformat(), json.dumps(learning_data)))
+        conn.commit()
+        conn.close()
+        
+        return {
+            'name': project_name,
+            'path': project_path,
+            'analysis': analysis,
+            'files_count': len(file_info)
+        }
+    
+    def _analyze_uploaded_files(self, project_path: str, prompt: str) -> dict:
+        """Analyze uploaded files to understand patterns and structure"""
+        analysis = {
+            'file_types': {},
+            'structure': [],
+            'patterns': [],
+            'suggestions': []
+        }
+        
+        try:
+            # Analyze file structure
+            for root, dirs, files in os.walk(project_path):
+                rel_root = os.path.relpath(root, project_path)
+                for file in files:
+                    ext = os.path.splitext(file)[1]
+                    analysis['file_types'][ext] = analysis['file_types'].get(ext, 0) + 1
+                    analysis['structure'].append(os.path.join(rel_root, file))
+            
+            # Basic pattern detection
+            if '.py' in analysis['file_types']:
+                analysis['patterns'].append('Python project')
+            if '.js' in analysis['file_types']:
+                analysis['patterns'].append('JavaScript project')
+            if '.html' in analysis['file_types']:
+                analysis['patterns'].append('Web project')
+            
+            # Generate suggestions based on analysis
+            analysis['suggestions'] = [
+                f"Found {sum(analysis['file_types'].values())} files",
+                f"Primary language: {self._detect_primary_language(analysis['file_types'])}",
+                "Can create similar project with improvements"
+            ]
+            
+        except Exception as e:
+            analysis['error'] = str(e)
+        
+        return analysis
+    
+    def _detect_primary_language(self, file_types: dict) -> str:
+        """Detect primary programming language"""
+        lang_map = {
+            '.py': 'Python',
+            '.js': 'JavaScript', 
+            '.html': 'HTML',
+            '.css': 'CSS',
+            '.java': 'Java',
+            '.cpp': 'C++',
+            '.c': 'C'
+        }
+        
+        max_count = 0
+        primary_lang = 'Unknown'
+        
+        for ext, count in file_types.items():
+            if ext in lang_map and count > max_count:
+                max_count = count
+                primary_lang = lang_map[ext]
+        
+        return primary_lang
+    
+    def apply_learning(self, learning_project: str, enhancement_prompt: str) -> dict:
+        """Apply learning from analyzed project to create enhanced version"""
+        enhanced_name = f"enhanced_{learning_project}_{datetime.now().strftime('%H%M')}"
+        
+        # Get learning data
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('SELECT metadata FROM projects WHERE name = ?', (learning_project,))
+        result = cursor.fetchone()
+        conn.close()
+        
+        if not result:
+            raise ValueError(f"Learning project {learning_project} not found")
+        
+        learning_data = json.loads(result[0])
+        
+        # Create enhanced project using learning insights
+        combined_prompt = f"""
+        Based on analysis of uploaded project:
+        - File types: {learning_data['analysis'].get('file_types', {})}
+        - Patterns: {learning_data['analysis'].get('patterns', [])}
+        - Structure: {len(learning_data['analysis'].get('structure', []))} files
+        
+        Enhancement request: {enhancement_prompt}
+        
+        Create an improved version incorporating best practices and requested enhancements.
+        """
+        
+        return self.create_project_from_prompt(combined_prompt, enhanced_name)
+    
+    def link_external_folder(self, folder_path: str, project_name: str, copy_mode: bool = True) -> dict:
+        """Link or copy external folder as a project"""
+        if not os.path.exists(folder_path):
+            raise ValueError(f"Folder {folder_path} does not exist")
+        
+        project_path = os.path.join(self.projects_dir, project_name)
+        
+        if copy_mode:
+            # Copy folder to workspace
+            if os.path.exists(project_path):
+                shutil.rmtree(project_path)
+            shutil.copytree(folder_path, project_path)
+            status = 'copied'
+        else:
+            # Create symlink (work in place)
+            if os.path.exists(project_path):
+                os.remove(project_path)
+            os.symlink(folder_path, project_path)
+            status = 'linked'
+        
+        # Analyze linked folder
+        analysis = self._analyze_uploaded_files(project_path, f"Analyze linked folder: {folder_path}")
+        
+        # Store in database
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO projects (name, path, type, status, created_at, metadata)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (project_name, project_path, 'linked', status,
+              datetime.now().isoformat(), json.dumps({
+                  'original_path': folder_path,
+                  'copy_mode': copy_mode,
+                  'analysis': analysis
+              })))
+        conn.commit()
+        conn.close()
+        
+        return {
+            'name': project_name,
+            'path': project_path,
+            'status': status,
+            'analysis': analysis
+        }
+    
     def _generate_project_files(self, project_path: str, project_info: dict, prompt: str) -> list:
         """Generate project files based on type and prompt"""
         files_created = []
@@ -293,50 +478,134 @@ python main.py
         return {"error": "No runnable file found"}
 
 def render_project_creator():
-    """Render the main project creator interface"""
-    st.title("🚀 GRINGO Project Creator")
-    st.markdown("**Create any project through natural language prompts**")
+    """Render the project creation interface with folder learning"""
+    st.title("🚀 AI Project Creator")
+    st.markdown("**Describe any project and AI will build it for you - or learn from existing folders**")
     
     # Initialize project manager
     workspace_root = os.path.expanduser("~/gringo_workspace")
     if 'project_manager' not in st.session_state:
         st.session_state.project_manager = FullProjectManager(workspace_root)
     
-    prompt = st.text_area(
-        "Describe what you want to build:",
-        placeholder="Create a simple calculator with a web interface using Streamlit",
-        height=100
-    )
+    # Tab layout for different creation modes
+    tab1, tab2, tab3 = st.tabs(["🆕 Create New", "📁 Learn from Folder", "🔗 Link Existing"])
     
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        project_name = st.text_input("Project name (optional):")
-    with col2:
-        auto_run = st.checkbox("Auto-run after creation", value=False)
+    with tab1:
+        st.subheader("Create from Description")
+        prompt = st.text_area(
+            "Describe what you want to build:",
+            placeholder="Create a simple calculator with a web interface using Streamlit",
+            height=100
+        )
+        
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            project_name = st.text_input("Project name (optional):")
+        with col2:
+            auto_run = st.checkbox("Auto-run after creation", value=False)
+        
+        if st.button("🚀 Create Project", type="primary") and prompt:
+            with st.spinner("🤖 Creating your project..."):
+                try:
+                    result = st.session_state.project_manager.create_project_from_prompt(
+                        prompt, project_name if project_name else None
+                    )
+                    
+                    st.success(f"✅ Project '{result['name']}' created successfully!")
+                    st.info(f"📂 Location: {result['path']}")
+                    
+                    if auto_run:
+                        run_result = st.session_state.project_manager.run_project(result['name'])
+                        if run_result.get('success'):
+                            st.success("✅ Auto-run completed!")
+                            st.code(run_result['output'])
+                    
+                except Exception as e:
+                    st.error(f"❌ Failed to create project: {e}")
     
-    if st.button("🚀 Create Project", type="primary") and prompt:
-        with st.spinner("🤖 Creating your project..."):
-            try:
-                result = st.session_state.project_manager.create_project_from_prompt(
-                    prompt, project_name if project_name else None
-                )
-                
-                st.success(f"✅ Project '{result['name']}' created successfully!")
-                st.info(f"📂 Location: {result['path']}")
-                
-                if auto_run:
-                    run_result = st.session_state.project_manager.run_project(result['name'])
-                    if run_result.get('success'):
-                        st.success("✅ Auto-run completed!")
-                        st.code(run_result['output'])
-                
-            except Exception as e:
-                st.error(f"❌ Failed to create project: {e}")
+    with tab2:
+        st.subheader("Learn from Existing Folder")
+        st.markdown("Upload a folder and AI will analyze it, learn patterns, and help build similar projects")
+        
+        uploaded_files = st.file_uploader(
+            "Upload project files or folder",
+            accept_multiple_files=True,
+            help="Upload files from an existing project for AI to learn from"
+        )
+        
+        if uploaded_files:
+            learn_prompt = st.text_area(
+                "What should AI learn from these files?",
+                placeholder="Analyze this codebase and help me build a similar project with better architecture",
+                height=80
+            )
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                learn_name = st.text_input("Learning project name:", placeholder="learned_project")
+            with col2:
+                apply_learning = st.checkbox("Apply learning to new project", value=True)
+            
+            if st.button("🧠 Learn & Create", type="primary") and learn_prompt:
+                with st.spinner("🧠 AI is analyzing and learning..."):
+                    try:
+                        # Create learning project from uploaded files
+                        result = st.session_state.project_manager.learn_from_files(
+                            uploaded_files, learn_prompt, learn_name
+                        )
+                        
+                        st.success(f"✅ AI learned from {len(uploaded_files)} files!")
+                        st.info(f"📂 Learning project: {result['name']}")
+                        
+                        if apply_learning:
+                            # Apply learning to create enhanced project
+                            enhanced_result = st.session_state.project_manager.apply_learning(
+                                result['name'], learn_prompt
+                            )
+                            st.success(f"✅ Enhanced project created: {enhanced_result['name']}")
+                        
+                    except Exception as e:
+                        st.error(f"❌ Failed to learn from files: {e}")
+    
+    with tab3:
+        st.subheader("Link External Folder")
+        st.markdown("Connect an existing folder on your system to work with AI agents")
+        
+        folder_path = st.text_input(
+            "Folder path to link:",
+            placeholder="/path/to/your/project/folder",
+            help="Enter the full path to a folder you want to work with"
+        )
+        
+        if folder_path and os.path.exists(folder_path):
+            st.success(f"✅ Found folder: {folder_path}")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                link_name = st.text_input("Project name:", placeholder="linked_project")
+            with col2:
+                copy_mode = st.selectbox("Link mode:", ["Copy to workspace", "Work in place"])
+            
+            if st.button("🔗 Link Folder", type="primary") and link_name:
+                with st.spinner("🔗 Linking folder..."):
+                    try:
+                        result = st.session_state.project_manager.link_external_folder(
+                            folder_path, link_name, copy_mode == "Copy to workspace"
+                        )
+                        
+                        st.success(f"✅ Folder linked as project: {result['name']}")
+                        st.info(f"📂 Location: {result['path']}")
+                        
+                    except Exception as e:
+                        st.error(f"❌ Failed to link folder: {e}")
+        
+        elif folder_path:
+            st.error("❌ Folder not found. Please check the path.")
 
 def render_agent_control():
-    """Render the multi-agent control interface"""
+    """Render the multi-agent control interface with project awareness"""
     st.title("🤖 Multi-Agent Control Center")
-    st.markdown("**Orchestrate specialized AI agents for complex tasks**")
+    st.markdown("**Orchestrate specialized AI agents for complex tasks and project analysis**")
     
     # Initialize orchestrator
     workspace_root = os.path.expanduser("~/gringo_workspace")
@@ -349,14 +618,277 @@ def render_agent_control():
             "refactor": ("agents/refactor_agent.py", "Code refactoring and optimization"),
             "test_gen": ("agents/test_generator_agent.py", "Automated test generation"),
             "doc_gen": ("agents/doc_generator_agent.py", "Documentation generation"),
-            "reviewer": ("agents/review_agent.py", "Code review and quality check"),
+            "reviewer": ("agents/review_agent.py", "Code review and quality analysis"),
             "security": ("agents/security_agent.py", "Security analysis and hardening"),
             "performance": ("agents/performance_agent.py", "Performance optimization"),
             "api": ("agents/api_agent.py", "API development and testing"),
             "deploy": ("agents/deploy_agent.py", "Deployment and DevOps"),
-            "analytics": ("agents/analytics_agent.py", "Data analysis and metrics")
+            "analytics": ("agents/analytics_agent.py", "Data analysis and insights")
         }
         
+        for agent_id, (path, desc) in agent_configs.items():
+            st.session_state.orchestrator.register_agent(agent_id, path, desc)
+    
+    # Project-aware agent control
+    tab1, tab2, tab3, tab4 = st.tabs(["🎯 Quick Actions", "🔄 Agent Pipelines", "📁 Project Analysis", "📊 Agent Status"])
+    
+    with tab1:
+        st.subheader("AI Agent Quick Actions")
+        
+        # Get available projects
+        projects = get_available_projects(workspace_root)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            selected_project = st.selectbox(
+                "Target Project (optional):",
+                ["All Projects"] + projects,
+                help="Choose a specific project or work globally"
+            )
+        
+        with col2:
+            action_type = st.selectbox(
+                "Quick Action:",
+                [
+                    "Analyze & Summarize",
+                    "Code Review",
+                    "Generate Tests",
+                    "Refactor Code",
+                    "Security Audit",
+                    "Performance Check",
+                    "Generate Docs",
+                    "Plan Improvements"
+                ]
+            )
+        
+        task_description = st.text_area(
+            "Describe the task:",
+            placeholder="Review the authentication module and suggest improvements",
+            height=100
+        )
+        
+        if st.button("🚀 Run Quick Action", type="primary") and task_description:
+            with st.spinner(f"🤖 Running {action_type}..."):
+                try:
+                    # Map action to appropriate agent
+                    agent_mapping = {
+                        "Analyze & Summarize": "analytics",
+                        "Code Review": "reviewer", 
+                        "Generate Tests": "test_gen",
+                        "Refactor Code": "refactor",
+                        "Security Audit": "security",
+                        "Performance Check": "performance",
+                        "Generate Docs": "doc_gen",
+                        "Plan Improvements": "planner"
+                    }
+                    
+                    agent_id = agent_mapping.get(action_type, "planner")
+                    
+                    # Add project context if selected
+                    context = task_description
+                    if selected_project != "All Projects":
+                        context = f"Project: {selected_project}\nTask: {task_description}"
+                    
+                    result = st.session_state.orchestrator.run_single_agent(agent_id, context)
+                    
+                    st.success(f"✅ {action_type} completed!")
+                    st.markdown("### Results:")
+                    st.markdown(result.output)
+                    
+                    if result.files_created:
+                        st.info(f"📁 Files created: {', '.join(result.files_created)}")
+                    
+                except Exception as e:
+                    st.error(f"❌ Action failed: {e}")
+    
+    with tab2:
+        st.subheader("Multi-Agent Workflows")
+        
+        # Predefined pipelines
+        col1, col2 = st.columns(2)
+        with col1:
+            pipeline_type = st.selectbox(
+                "Workflow Type:",
+                [
+                    "Full Development Cycle",
+                    "Code Quality Audit", 
+                    "Security Hardening",
+                    "Performance Optimization",
+                    "Documentation Suite",
+                    "Custom Pipeline"
+                ]
+            )
+        
+        with col2:
+            target_project = st.selectbox(
+                "Target Project:",
+                ["Select Project"] + projects,
+                help="Choose which project to process"
+            )
+        
+        pipeline_description = st.text_area(
+            "Pipeline Description:",
+            placeholder="Add user authentication, review security, generate tests, and create documentation",
+            height=100
+        )
+        
+        # Show pipeline preview
+        if pipeline_type != "Custom Pipeline":
+            pipeline_agents = get_pipeline_agents(pipeline_type)
+            st.info(f"🔄 Pipeline: {' → '.join(pipeline_agents)}")
+        
+        if st.button("⚡ Run Pipeline", type="primary") and pipeline_description and target_project != "Select Project":
+            with st.spinner("🔄 Running multi-agent pipeline..."):
+                try:
+                    # Add project context
+                    context = f"Project: {target_project}\nObjective: {pipeline_description}"
+                    
+                    if pipeline_type == "Custom Pipeline":
+                        # Let AI decide which agents to use
+                        results = st.session_state.orchestrator.run_intelligent_pipeline(context)
+                    else:
+                        # Use predefined pipeline
+                        agent_sequence = get_pipeline_agents(pipeline_type)
+                        results = st.session_state.orchestrator.run_agent_pipeline(agent_sequence, context)
+                    
+                    st.success(f"✅ Pipeline completed! Ran {len(results)} agents")
+                    
+                    # Show results
+                    for i, result in enumerate(results):
+                        with st.expander(f"Agent {i+1}: {result.agent_id}"):
+                            st.markdown(result.output)
+                            if result.files_created:
+                                st.info(f"Files created: {', '.join(result.files_created)}")
+                    
+                except Exception as e:
+                    st.error(f"❌ Pipeline failed: {e}")
+    
+    with tab3:
+        st.subheader("Project Deep Analysis")
+        
+        if projects:
+            analysis_project = st.selectbox("Project to Analyze:", projects)
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.button("📊 Full Analysis"):
+                    analyze_project_full(analysis_project, workspace_root)
+            
+            with col2:
+                if st.button("🔍 Code Quality"):
+                    analyze_project_quality(analysis_project, workspace_root)
+            
+            with col3:
+                if st.button("🚀 Optimization"):
+                    analyze_project_optimization(analysis_project, workspace_root)
+        
+        else:
+            st.info("📁 No projects found. Create or link a project first.")
+    
+    with tab4:
+        st.subheader("Agent Health & Performance")
+        
+        # Agent status monitoring
+        agents = st.session_state.orchestrator.get_registered_agents()
+        
+        for agent_id, agent_info in agents.items():
+            with st.expander(f"🤖 {agent_id.title()} Agent"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write(f"**Description:** {agent_info['description']}")
+                    st.write(f"**Status:** {'✅ Ready' if agent_info['healthy'] else '❌ Error'}")
+                
+                with col2:
+                    if st.button(f"Test {agent_id}", key=f"test_{agent_id}"):
+                        test_agent(agent_id)
+
+def get_available_projects(workspace_root):
+    """Get list of available projects"""
+    projects_dir = os.path.join(workspace_root, "projects")
+    if not os.path.exists(projects_dir):
+        return []
+    
+    return [d for d in os.listdir(projects_dir) 
+            if os.path.isdir(os.path.join(projects_dir, d))]
+
+def get_pipeline_agents(pipeline_type):
+    """Get agent sequence for predefined pipelines"""
+    pipelines = {
+        "Full Development Cycle": ["planner", "refactor", "test_gen", "security", "doc_gen", "deploy"],
+        "Code Quality Audit": ["reviewer", "refactor", "test_gen", "performance"],
+        "Security Hardening": ["security", "reviewer", "test_gen", "doc_gen"], 
+        "Performance Optimization": ["performance", "refactor", "test_gen", "analytics"],
+        "Documentation Suite": ["analytics", "doc_gen", "reviewer"]
+    }
+    return pipelines.get(pipeline_type, ["planner"])
+
+def analyze_project_full(project_name, workspace_root):
+    """Run comprehensive project analysis"""
+    with st.spinner("🔍 Running full project analysis..."):
+        try:
+            orchestrator = st.session_state.orchestrator
+            context = f"Analyze project '{project_name}' comprehensively - architecture, code quality, security, performance, and documentation"
+            
+            agents = ["analytics", "reviewer", "security", "performance", "doc_gen"]
+            results = orchestrator.run_agent_pipeline(agents, context)
+            
+            st.success("✅ Full analysis completed!")
+            
+            # Display comprehensive results
+            for result in results:
+                with st.expander(f"📋 {result.agent_id.title()} Analysis"):
+                    st.markdown(result.output)
+            
+        except Exception as e:
+            st.error(f"❌ Analysis failed: {e}")
+
+def analyze_project_quality(project_name, workspace_root):
+    """Analyze code quality"""
+    with st.spinner("🔍 Analyzing code quality..."):
+        try:
+            orchestrator = st.session_state.orchestrator
+            context = f"Review code quality for project '{project_name}' - check for bugs, improvements, and best practices"
+            
+            result = orchestrator.run_single_agent("reviewer", context)
+            
+            st.success("✅ Quality analysis completed!")
+            st.markdown("### Code Quality Report:")
+            st.markdown(result.output)
+            
+        except Exception as e:
+            st.error(f"❌ Quality analysis failed: {e}")
+
+def analyze_project_optimization(project_name, workspace_root):
+    """Analyze optimization opportunities"""
+    with st.spinner("🚀 Finding optimization opportunities..."):
+        try:
+            orchestrator = st.session_state.orchestrator
+            context = f"Find optimization opportunities for project '{project_name}' - performance, architecture, and efficiency improvements"
+            
+            agents = ["performance", "refactor", "planner"]
+            results = orchestrator.run_agent_pipeline(agents, context)
+            
+            st.success("✅ Optimization analysis completed!")
+            
+            for result in results:
+                with st.expander(f"⚡ {result.agent_id.title()} Recommendations"):
+                    st.markdown(result.output)
+            
+        except Exception as e:
+            st.error(f"❌ Optimization analysis failed: {e}")
+
+def test_agent(agent_id):
+    """Test individual agent"""
+    with st.spinner(f"Testing {agent_id} agent..."):
+        try:
+            orchestrator = st.session_state.orchestrator
+            result = orchestrator.run_single_agent(agent_id, "Health check test")
+            
+            st.success(f"✅ {agent_id} agent is working!")
+            st.code(result.output[:200] + "..." if len(result.output) > 200 else result.output)
+            
+        except Exception as e:
+            st.error(f"❌ {agent_id} agent test failed: {e}")
         for name, (script, description) in agent_configs.items():
             st.session_state.orchestrator.register_agent(name, script, description)
     
