@@ -41,30 +41,83 @@
 - **Project Database**: SQLite-backed project tracking and history
 - **System Monitoring**: Resource usage and performance metrics
 
+### 🏢 **Enterprise Features**
+- **Branded Desktop App**: Custom logo integration for professional deployment
+- **Service Management**: Automated startup/shutdown with health monitoring
+- **Project Folder Learning**: AI learns from existing codebases
+- **External Folder Linking**: Connect and analyze external projects
+- **One-Command Deployment**: Complete automation from clone to running
+
+### 🔧 **System Integration**
+- **macOS App Bundle**: Native application with custom icon
+- **Service Scripts**: Professional startup/shutdown automation
+- **Desktop Launcher**: Branded GUI launcher with system integration
+- **Auto-Recovery**: Smart error handling and service restoration
+
 ## 🎯 Quick Start
 
 ### Prerequisites
 - Python 3.8+
 - [Ollama](https://ollama.ai) for local AI (optional but recommended)
 
-### Installation
+### One-Command Installation & Startup
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/gringo-ai-os.git
+git clone https://github.com/TheGringo-ai/gringo-ai-os.git
 cd gringo-ai-os
 
-# Install dependencies
-pip install streamlit pandas psutil requests
-
-# Install LLaMA3 for AI features (optional)
-ollama pull llama3
-
-# Launch GRINGO
-streamlit run ultimate_gringo.py --server.port 8504
+# One-command startup (handles everything automatically)
+./start_gringo.sh
 ```
 
-Open [http://localhost:8504](http://localhost:8504) in your browser.
+**That's it!** The script will:
+- ✅ Install all Python dependencies
+- ✅ Start Ollama AI service
+- ✅ Launch GRINGO AI OS
+- ✅ Open your browser automatically
+
+### Manual Installation (Alternative)
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Install Ollama for AI features
+curl -fsSL https://ollama.ai/install.sh | sh
+ollama pull llama2
+
+# Launch GRINGO manually
+streamlit run ultimate_gringo.py --server.port 8507
+```
+
+Open [http://localhost:8507](http://localhost:8507) in your browser.
+
+## 🚀 Service Management
+
+### Starting After Computer Restart
+```bash
+cd gringo-ai-os
+./start_gringo.sh
+```
+
+### Desktop App (macOS)
+```bash
+# Create branded app with your logo
+./install_gringo_app.sh
+
+# Then double-click "GRINGO AI OS.app"
+```
+
+### Stop Services
+```bash
+./stop_gringo.sh
+```
+
+### Service Status
+- **Main Interface**: http://localhost:8507
+- **Ollama AI**: http://localhost:11434
+- **Check Status**: Script shows real-time monitoring
 
 ## 🚀 Usage Examples
 
@@ -94,7 +147,12 @@ gringo-ai-os/
 ├── ultimate_gringo.py          # Main GRINGO application
 ├── multi_agent_orchestrator.py # Agent coordination system
 ├── custom_tools_manager.py     # Tool creation and management
-├── agents/                     # Specialized AI agents
+├── start_gringo.sh            # One-command startup script
+├── stop_gringo.sh             # Service stop script
+├── install_gringo_app.sh      # macOS app creator
+├── gringo_launcher.py         # Desktop launcher
+├── create_app_bundle.sh       # App bundle creator
+├── agents/                    # Specialized AI agents
 │   ├── planner_agent.py
 │   ├── refactor_agent.py
 │   ├── test_generator_agent.py
@@ -105,8 +163,11 @@ gringo-ai-os/
 │   ├── api_agent.py
 │   ├── deploy_agent.py
 │   └── analytics_agent.py
+├── assets/                    # Branding and logos
+│   └── company_logo.png       # Your company logo
 ├── call_llama.py              # Local AI integration
 ├── memory.json                # Persistent memory storage
+├── STARTUP_GUIDE.md           # Complete startup instructions
 └── README.md                  # This file
 ```
 
@@ -127,6 +188,12 @@ gringo-ai-os/
 
 ## Development
 
+### Service Architecture
+- **Main Interface**: Streamlit web application on port 8507
+- **AI Engine**: Ollama local AI service on port 11434
+- **Process Management**: Automated startup/shutdown scripts
+- **Desktop Integration**: Native macOS app bundle support
+
 ### Running Tests
 
 ```bash
@@ -136,6 +203,15 @@ python3 test_basic.py
 python3 test_death_server.py
 python3 test_fredfix_agent.py
 ```
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| "Ollama not found" | `curl -fsSL https://ollama.ai/install.sh \| sh` |
+| "No module named streamlit" | `pip install -r requirements.txt` |
+| "Port already in use" | `./stop_gringo.sh` then restart |
+| Service won't start | Check `STARTUP_GUIDE.md` for details |
 
 ## Documentation
 
